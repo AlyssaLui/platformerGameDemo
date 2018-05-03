@@ -131,7 +131,7 @@ function buildLevel() {
   // best method is to draw sprites from left to right on the screen
   createPlatform(50, 690, 5);
   createCollectable(300, 340);
-  createMonster(500, 600, 0);
+  createMonster(500, 600, -1);
 }
 
 // Creates a player sprite and adds animations and a collider to it
@@ -201,6 +201,18 @@ function createCollectable(x, y) {
 // removed from the game.
 function applyGravity() {
   player.velocity.y += GRAVITY;
+   if(player.previousPosition.y !== player.position.y) {
+    playerGrounded = false;
+  }
+  if(player.position.y >= height){
+    executeLoss();
+  }
+  for(var i=0; i<monsters.length; i++){
+    monsters[i].velocity.y += GRAVITY;
+    if(monsters[i].position.y >= height){
+      monsters[i].remove();
+    }
+  }
 }
 
 // Called in the draw() function. Continuously checks for collisions and overlaps
@@ -208,6 +220,9 @@ function applyGravity() {
 // occurs, a specific callback function is run.
 function checkCollisions() {
   player.collide(platforms, platformCollision);
+  monsters.collide(platforms, platformCollision);
+  player.collide(monsters, playerMonsterCollision);
+  player.overlap(collectables, getCollectable);
 }
 
 // Callback function that runs when the player or a monster collides with a
@@ -216,17 +231,40 @@ function platformCollision(sprite, platform) {
   if(sprite === player && sprite.touching.bottom){
     sprite.velocity.y = 0;
     playerGrounded = true;
+    currentJumpTime = MAX_JUMP_TIME;
+    currentJumpForce = DEFAULT_JUMP_FORCE;
+  }
+  for(var i=0; i<monsters.length; i++){
+      if(sprite===monsters[i] && monsters[i].touching.bottom){
+        monsters[i].velocity.y = 0;
+      }
   }
 }
 
 // Callback function that runs when the player collides with a monster.
 function playerMonsterCollision(player, monster) {
-
+  if(player.touching.bottom){
+    monster.remove();
+    var defeatedMonster = createSprite(monster.position.x, monster.position.y, 0, 0);
+    defeatedMonster.addImage(monsterDefeatImage);
+    defeatedMonster.mirrorX(monster.mirrorX());
+    defeatedMonster.scale = 0.25;
+    defeatedMonster.life = 40;
+    currentJumpTime = MAX_JUMP_TIME;
+    currentJumpForce = DEFAULT_JUMP_FORCE;
+    player.velocity.y = currentJumpForce;
+    millis = new Date();
+    score++;
+  }
+  else{
+    executeLoss();
+  }
 }
 
 // Callback function that runs when the player overlaps with a collectable.
 function getCollectable(player, collectable) {
-
+  collectable.remove();
+  score++;
 }
 
 // Updates the player's position and current animation by calling
@@ -262,6 +300,14 @@ function checkFalling() {
 // her animation to "jump". Then, handle if the player is holding down the up arrow
 // key, which should allow her to jump higher for a certain amount of time.
 function checkJumping() {
+  if(player.velocity.y < 0) {  
+    player.changeAnimation("jump"); 
+    if(keyIsDown(UP_ARROW) && currentJumpTime > 0){
+      player.velocity.y = currentJumpForce;
+      deltaMillis = new Date();
+      currentJumpTime -= deltaMillis - millis;
+    }
+  }
 
 }
 
@@ -292,14 +338,20 @@ function checkMovingLeftRight() {
 // this should initiate the jump sequence, which can be extended by holding down
 // the up arrow key (see checkJumping() above).
 function keyPressed() {
-
+  if(keyCode === UP_ARROW && playerGrounded){
+    playerGrounded = false;
+    player.velocity.y = currentJumpForce;
+    millis = new Date();
+  }
 }
 
 // Check if the player has released the up arrow key. If the player's y velocity
 // is < 0 (that is, she is currently moving "up" on the canvas), then this will
 // immediately set currentJumpTime to 0, causing her to begin falling.
 function keyReleased() {
-
+  if(player.velocity.y < 0){
+    currentJumpTime = 0;
+  }
 }
 
 // Check if the player has typed the "p" key, which pauses the game. We use
@@ -332,7 +384,10 @@ function updateDisplay() {
 
   // turn camera back on
   camera.on();
-
+  camera.position.x = player.position.x;
+  for(var i=0; i<collectables.length; i++){
+    collectables[i].rotation += 5;
+  }
 }
 
 // Called when the player has won the game (e.g., reached the goal at the end).
@@ -346,7 +401,7 @@ function executeWin() {
 // a monster). Anything can happen here, but the most important thing is that we
 // call resetGame() after a short delay.
 function executeLoss() {
-
+  resetGame();
 }
 
 // Toggles the game's music on and off.
